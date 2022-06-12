@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -75,11 +74,8 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	})
 
 	if err != nil {
-		log.Printf("failed to create multipart upload: %v", err)
-		return err
+		return fmt.Errorf("failed to create multipart upload: %v", err)
 	}
-
-	log.Printf("initiates a multipart upload: %+v", out)
 
 	// Save the multipart file information to the persistence data store.
 	svc := dynamodb.New(sess)
@@ -118,14 +114,12 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	})
 
 	if err != nil {
-		log.Printf("failed to save data to dynamodb: %v", err)
-		return err
+		return fmt.Errorf("failed to save data to dynamodb: %v", err)
 	}
 
-	response(w, http.StatusOK, Video{
+	return response(w, http.StatusOK, Video{
 		Id: id,
 	})
-	return nil
 }
 
 // Upload a video file in chunks.
@@ -167,8 +161,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		TableName: aws.String(os.Getenv("AWS_DB_VOD_NAME")),
 	})
 	if err != nil {
-		log.Printf("failed to retrieve the video file from DynamoDB: %v", err)
-		return err
+		return fmt.Errorf("failed to retrieve the video file from DynamoDB: %v", err)
 	}
 	if len(resp.Item) == 0 {
 		return &appError{http.StatusNotFound, "video ID does not exist"}
@@ -180,8 +173,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 	buf := new(bytes.Buffer)
 	written, err := io.Copy(buf, body)
 	if err != nil {
-		log.Printf("failed to write binary data: %v", err)
-		return err
+		return fmt.Errorf("failed to write binary data: %v", err)
 	}
 	uploader := s3manager.NewUploader(sess)
 	_, err = uploader.S3.UploadPart(&s3.UploadPartInput{
@@ -193,8 +185,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		UploadId:      resp.Item["UploadId"].S,
 	})
 	if err != nil {
-		log.Printf("failed to partial upload to S3, %v", err)
-		return err
+		return fmt.Errorf("failed to partial upload to S3, %v", err)
 	}
 
 	out, err := uploader.S3.ListParts(&s3.ListPartsInput{
@@ -203,12 +194,11 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		UploadId: resp.Item["UploadId"].S,
 	})
 	if err != nil {
-		log.Printf("failed to list multipart upload: %v", err)
-		return err
+		return fmt.Errorf("failed to list multipart upload: %v", err)
 	}
 	// Respond to the client if the upload was not completed.
 	if len(out.Parts) < int(cr.Parts()) {
-		response(w, http.StatusPartialContent, struct{}{})
+		w.WriteHeader(http.StatusPartialContent)
 		return nil
 	}
 
@@ -228,9 +218,8 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		UploadId: resp.Item["UploadId"].S,
 	})
 	if err != nil {
-		log.Printf("failed to complete multipart upload: %v", err)
-		return err
+		return fmt.Errorf("failed to complete multipart upload: %v", err)
 	}
-	response(w, http.StatusCreated, struct{}{})
+	w.WriteHeader(http.StatusOK)
 	return nil
 }
