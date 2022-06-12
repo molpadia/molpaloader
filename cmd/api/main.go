@@ -66,4 +66,5 @@ func main() {
 // Register API endpionts to the router.
 func registerEndpoints(r *mux.Router) {
 	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(createVideo))
+	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(uploadVideo))
 }

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/google/uuid"
+	"github.com/gorilla/mux"
+	"github.com/molpadia/molpastream/internal/httprange"
+)
+
+const (
+	MinUploadChunkSize = 256 << 10
+	MaxUploadChunkSize = 5 << 20
 )
 
 type CreateVideo struct {
@@ -116,5 +125,112 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	response(w, http.StatusOK, Video{
 		Id: id,
 	})
+	return nil
+}
+
+// Upload a video file in chunks.
+func uploadVideo(w http.ResponseWriter, r *http.Request) error {
+	body := http.MaxBytesReader(w, r.Body, MaxUploadChunkSize)
+	id := mux.Vars(r)["id"]
+	if id == "" {
+		return &appError{http.StatusBadRequest, "video ID must be required"}
+	}
+	length, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
+	if err != nil {
+		return fmt.Errorf("cannot parse Content-Length header: %v", err)
+	}
+	if length > MaxUploadChunkSize {
+		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be less than %d bytes", MaxUploadChunkSize)}
+	}
+	if length < MinUploadChunkSize {
+		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be greater than %d bytes", MinUploadChunkSize)}
+	}
+	if length%MinUploadChunkSize > 0 {
+		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be the multiple of %d bytes", MinUploadChunkSize)}
+	}
+	cr, err := httprange.ParseContentRange(r.Header.Get("Content-Range"))
+	if err != nil {
+		return fmt.Errorf("cannot parse Content-Range header: %v", err)
+	}
+	if length != cr.Length() {
+		return &appError{http.StatusBadRequest, "invalid length of Content-Range header"}
+	}
+
+	sess := session.Must(session.NewSession())
+	svc := dynamodb.New(sess)
+	resp, err := svc.GetItem(&dynamodb.GetItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"Id": {
+				S: aws.String(id),
+			},
+		},
+		TableName: aws.String(os.Getenv("AWS_DB_VOD_NAME")),
+	})
+	if err != nil {
+		log.Printf("failed to retrieve the video file from DynamoDB: %v", err)
+		return err
+	}
+	if len(resp.Item) == 0 {
+		return &appError{http.StatusNotFound, "video ID does not exist"}
+	}
+	if strconv.FormatInt(cr.Size, 10) != *resp.Item["Metadata"].M["Length"].N {
+		return &appError{http.StatusBadRequest, "invalid size of Content-Range header"}
+	}
+
+	buf := new(bytes.Buffer)
+	written, err := io.Copy(buf, body)
+	if err != nil {
+		log.Printf("failed to write binary data: %v", err)
+		return err
+	}
+	uploader := s3manager.NewUploader(sess)
+	_, err = uploader.S3.UploadPart(&s3.UploadPartInput{
+		Body:          bytes.NewReader(buf.Bytes()),
+		Bucket:        aws.String(os.Getenv("AWS_S3_VOD_BUCKET")),
+		ContentLength: aws.Int64(written),
+		Key:           aws.String(id),
+		PartNumber:    aws.Int64(cr.CurrentPart()),
+		UploadId:      resp.Item["UploadId"].S,
+	})
+	if err != nil {
+		log.Printf("failed to partial upload to S3, %v", err)
+		return err
+	}
+
+	out, err := uploader.S3.ListParts(&s3.ListPartsInput{
+		Bucket:   aws.String(os.Getenv("AWS_S3_VOD_BUCKET")),
+		Key:      aws.String(id),
+		UploadId: resp.Item["UploadId"].S,
+	})
+	if err != nil {
+		log.Printf("failed to list multipart upload: %v", err)
+		return err
+	}
+	// Respond to the client if the upload was not completed.
+	if len(out.Parts) < int(cr.Parts()) {
+		response(w, http.StatusPartialContent, struct{}{})
+		return nil
+	}
+
+	var parts []*s3.CompletedPart
+	for _, part := range out.Parts {
+		parts = append(parts, &s3.CompletedPart{
+			ETag:       part.ETag,
+			PartNumber: part.PartNumber,
+		})
+	}
+	_, err = uploader.S3.CompleteMultipartUpload(&s3.CompleteMultipartUploadInput{
+		Bucket: aws.String(os.Getenv("AWS_S3_VOD_BUCKET")),
+		Key:    aws.String(id),
+		MultipartUpload: &s3.CompletedMultipartUpload{
+			Parts: parts,
+		},
+		UploadId: resp.Item["UploadId"].S,
+	})
+	if err != nil {
+		log.Printf("failed to complete multipart upload: %v", err)
+		return err
+	}
+	response(w, http.StatusCreated, struct{}{})
 	return nil
 }
