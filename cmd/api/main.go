@@ -2,42 +2,51 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 )
 
-func init() {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("failed to load env flie")
+type appHandler func(http.ResponseWriter, *http.Request) error
+
+type appError struct {
+	Code    int
+	Message string
+}
+
+func (e *appError) Error() string {
+	return fmt.Sprintf("Internal app error: %s", e.Message)
+}
+
+func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := fn(w, r); err != nil {
+		log.Printf("Server error: %s", err)
+
+		if e, ok := err.(*appError); ok {
+			http.Error(w, e.Message, e.Code)
+		} else {
+			http.Error(w, fmt.Sprintf("Internal app error: %s", err), http.StatusInternalServerError)
+		}
 	}
 }
 
-func env(key string, def string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
-	}
-
-	return def
-}
+var (
+	addr = flag.String("addr", env("ADDR", ":4443"), "web server address")
+	cert = flag.String("cert", env("CERT_FILE", ""), "path of TLS certificate file")
+	key  = flag.String("key", env("CERT_KEY", ""), "path of TLS private key file")
+)
 
 func main() {
-	var (
-		addr = flag.String("addr", env("ADDR", ":4443"), "web server address")
-		cert = flag.String("cert", env("CERT_FILE", ""), "path of TLS certificate file")
-		key  = flag.String("key", env("KEY_FILE", ""), "path of TLS private key file")
-	)
 	flag.Parse()
 
-	router := mux.NewRouter()
-	registerEndpoints(router)
+	r := mux.NewRouter()
+	registerEndpoints(r)
 
 	srv := &http.Server{
-		Handler:      router,
+		Handler:      r,
 		Addr:         *addr,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
@@ -54,7 +63,8 @@ func main() {
 	defer srv.Close()
 }
 
-// Register REST API endpionts to the router.
-func registerEndpoints(router *mux.Router) {
-	router.HandleFunc("/files", uploadFile).Methods("POST")
+// Register API endpionts to the router.
+func registerEndpoints(r *mux.Router) {
+	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(createVideo))
+	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(uploadVideo))
 }
