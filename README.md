@@ -1,5 +1,5 @@
 # molpastream
-The web server provides a feature of video stream uploading.
+The web server provides a feature of video streaming.
 
 ## Getting started
 Generate the Tls certificate and private key via OpenSSL before launch the server connection.
