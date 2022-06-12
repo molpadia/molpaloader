@@ -79,8 +79,6 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	log.Printf("initiates a multipart upload: %+v", out)
-
 	// Save the multipart file information to the persistence data store.
 	svc := dynamodb.New(sess)
 	_, err = svc.PutItem(&dynamodb.PutItemInput{
