@@ -1,7 +1,8 @@
-package main
+package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/molpadia/molpastream/internal/httprange"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -25,35 +27,27 @@ const (
 	MaxUploadChunkSize = 5 << 20
 )
 
-type CreateVideo struct {
-	Metadata Metadata `json:"metadata"`
-}
-
-type Video struct {
-	Id string `json:"id"`
-}
-
-type Metadata struct {
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Tags        []string `json:"tags"`
-}
-
 // Create a new video.
 // Initiates a multipart upload and return an upload ID from AWS S3 if upload type is resumable.
 func createVideo(w http.ResponseWriter, r *http.Request) error {
-	var data CreateVideo
+	var data VideoRequest
 
-	if err := parse(w, r, &data); err != nil {
+	if err := parseJSON(w, r, &data); err != nil {
 		return fmt.Errorf("cannot parse JSON from request body: %v", err)
 	}
 
 	if r.Header.Get("X-Upload-Content-Length") == "" {
-		return &appError{http.StatusBadRequest, "X-Upload-Content-Length header must be required"}
+		return &AppError{http.StatusBadRequest, "X-Upload-Content-Length header must be required"}
 	}
 
 	if r.Header.Get("X-Upload-Content-Type") == "" {
-		return &appError{http.StatusBadRequest, "X-Upload-Content-Type header must be required"}
+		return &AppError{http.StatusBadRequest, "X-Upload-Content-Type header must be required"}
+	}
+
+	uploadType := r.URL.Query().Get("uploadType")
+
+	if !slices.Contains([]string{"media", "resumable"}, uploadType) {
+		return &AppError{http.StatusBadRequest, "uploadType must be media or resumable"}
 	}
 
 	id := uuid.New().String()
@@ -78,8 +72,8 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// Save the multipart file information to the persistence data store.
-	svc := dynamodb.New(sess)
-	_, err = svc.PutItem(&dynamodb.PutItemInput{
+	db := dynamodb.New(sess)
+	_, err = db.PutItem(&dynamodb.PutItemInput{
 		Item: map[string]*dynamodb.AttributeValue{
 			"Id": {
 				S: aws.String(id),
@@ -117,9 +111,7 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("failed to save data to dynamodb: %v", err)
 	}
 
-	return response(w, http.StatusOK, Video{
-		Id: id,
-	})
+	return replyJSON(w, VideoResponse{id}, http.StatusOK)
 }
 
 // Upload a video file in chunks.
@@ -127,27 +119,27 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 	body := http.MaxBytesReader(w, r.Body, MaxUploadChunkSize)
 	id := mux.Vars(r)["id"]
 	if id == "" {
-		return &appError{http.StatusBadRequest, "video ID must be required"}
+		return &AppError{http.StatusBadRequest, "video ID must be required"}
 	}
 	length, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		return fmt.Errorf("cannot parse Content-Length header: %v", err)
 	}
 	if length > MaxUploadChunkSize {
-		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be less than %d bytes", MaxUploadChunkSize)}
+		return &AppError{http.StatusBadRequest, fmt.Sprintf("size must be less than %d bytes", MaxUploadChunkSize)}
 	}
 	if length < MinUploadChunkSize {
-		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be greater than %d bytes", MinUploadChunkSize)}
+		return &AppError{http.StatusBadRequest, fmt.Sprintf("size must be greater than %d bytes", MinUploadChunkSize)}
 	}
 	if length%MinUploadChunkSize > 0 {
-		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be the multiple of %d bytes", MinUploadChunkSize)}
+		return &AppError{http.StatusBadRequest, fmt.Sprintf("size must be the multiple of %d bytes", MinUploadChunkSize)}
 	}
 	cr, err := httprange.ParseContentRange(r.Header.Get("Content-Range"))
 	if err != nil {
 		return fmt.Errorf("cannot parse Content-Range header: %v", err)
 	}
 	if length != cr.Length() {
-		return &appError{http.StatusBadRequest, "invalid length of Content-Range header"}
+		return &AppError{http.StatusBadRequest, "invalid length of Content-Range header"}
 	}
 
 	sess := session.Must(session.NewSession())
@@ -164,10 +156,10 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("failed to retrieve the video file from DynamoDB: %v", err)
 	}
 	if len(resp.Item) == 0 {
-		return &appError{http.StatusNotFound, "video ID does not exist"}
+		return &AppError{http.StatusNotFound, "video ID does not exist"}
 	}
 	if strconv.FormatInt(cr.Size, 10) != *resp.Item["Metadata"].M["Length"].N {
-		return &appError{http.StatusBadRequest, "invalid size of Content-Range header"}
+		return &AppError{http.StatusBadRequest, "invalid size of Content-Range header"}
 	}
 
 	buf := new(bytes.Buffer)
@@ -221,5 +213,23 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("failed to complete multipart upload: %v", err)
 	}
 	w.WriteHeader(http.StatusOK)
+	return nil
+}
+
+// Parse incoming request body as JSON object.
+func parseJSON(w http.ResponseWriter, r *http.Request, data interface{}) error {
+	if err := json.NewDecoder(r.Body).Decode(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Respond the output with JSON format to the client.
+func replyJSON(w http.ResponseWriter, data interface{}, code int) error {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		return err
+	}
 	return nil
 }
