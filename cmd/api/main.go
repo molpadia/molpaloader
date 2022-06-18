@@ -2,35 +2,14 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/molpadia/molpastream/internal/app"
 )
-
-type appHandler func(http.ResponseWriter, *http.Request) error
-
-type appError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e *appError) Error() string {
-	return fmt.Sprintf("Internal server error: %s", e.Message)
-}
-
-func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := fn(w, r); err != nil {
-		log.Printf("Error: %v", err)
-		if e, ok := err.(*appError); ok {
-			response(w, e.Code, e)
-		} else {
-			http.Error(w, fmt.Sprintf("Internal server error: %s", err), http.StatusInternalServerError)
-		}
-	}
-}
 
 var (
 	addr = flag.String("addr", env("ADDR", ":4443"), "web server address")
@@ -38,11 +17,19 @@ var (
 	key  = flag.String("key", env("CERT_KEY", ""), "path of TLS private key file")
 )
 
+// Get the value of environment variables.
+func env(key string, def string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return def
+}
+
 func main() {
 	flag.Parse()
 
 	r := mux.NewRouter()
-	registerEndpoints(r)
+	app.SetupRoutes(r)
 
 	srv := &http.Server{
 		Handler:      r,
@@ -60,10 +47,4 @@ func main() {
 	}
 
 	defer srv.Close()
-}
-
-// Register API endpionts to the router.
-func registerEndpoints(r *mux.Router) {
-	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(createVideo))
-	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(uploadVideo))
 }
