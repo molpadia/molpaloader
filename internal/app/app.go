@@ -16,7 +16,7 @@ func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e, ok := err.(*AppError); ok {
 			replyJSON(w, e, e.Code)
 		} else {
-			http.Error(w, fmt.Sprintf("Internal server error: %v", err), http.StatusInternalServerError)
+			replyJSON(w, fmt.Sprintf("Internal server error: %v", err), http.StatusInternalServerError)
 		}
 	}
 }
