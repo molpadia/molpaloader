@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 RUN apk --no-cache add ca-certificates
-RUN CGO_ENABLED=0 go build -o /app ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app ./cmd/api
 
 FROM scratch
 
