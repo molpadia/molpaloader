@@ -122,7 +122,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 			return fmt.Errorf("failed to upload video to S3: %v", err)
 		}
 	case "resumable":
-		part, err := uploader.UploadPart(id, video.Upload.Id, buf.Bytes(), cr.Size, cr.CurrentPart())
+		part, err := uploader.UploadPart(id, video.Upload.Id, buf.Bytes(), size, cr.CurrentPart())
 		if err != nil {
 			return fmt.Errorf("failed to partial upload to S3, %v", err)
 		}
