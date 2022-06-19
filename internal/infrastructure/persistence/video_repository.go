@@ -27,7 +27,7 @@ func (r *VideoRepository) GetById(id string) (*entity.Video, error) {
 		Key:       map[string]*dynamodb.AttributeValue{"Id": {S: aws.String(id)}},
 		TableName: aws.String(tableName),
 	})
-	if err != nil {
+	if err != nil || len(out.Item) == 0 {
 		return nil, err
 	}
 	var video *entity.Video

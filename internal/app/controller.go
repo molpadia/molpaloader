@@ -25,7 +25,6 @@ const (
 // Create a new video.
 func createVideo(w http.ResponseWriter, r *http.Request) error {
 	var data VideoRequest
-
 	if err := parseJSON(w, r, &data); err != nil {
 		return fmt.Errorf("cannot parse JSON from request body: %v", err)
 	}
@@ -61,8 +60,7 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 		return &AppError{http.StatusBadRequest, "Invalid upload type"}
 	}
 	// Save the multipart file information to the persistence.
-	err = repo.Save(video)
-	if err != nil {
+	if err = repo.Save(video); err != nil {
 		return fmt.Errorf("failed to save data to dynamodb: %v", err)
 	}
 	return replyJSON(w, VideoResponse{video.Id}, http.StatusOK)
