@@ -165,13 +165,13 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 	default:
 		return &appError{http.StatusBadRequest, "Invalid upload type"}
 	}
-	// Respond to the client if the upload was not completed.
+	// Respond to the client if the upload was not completed,
+	// otherwise respond in success when the given file has been uploaded.
 	if cr != nil && len(video.Upload.Parts) < int(cr.Parts()) {
 		w.WriteHeader(http.StatusPartialContent)
-		return nil
+	} else {
+		w.WriteHeader(http.StatusOK)
 	}
-	// Respond in success when the given file has been uploaded.
-	w.WriteHeader(http.StatusOK)
 	return nil
 }
 
