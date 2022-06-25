@@ -12,4 +12,5 @@ type VideoResponse struct {
 	Description string            `json:"description"`
 	Tags        []string          `json:"tags"`
 	Metadata    map[string]string `json:"metadata"`
+	Status      string            `json:"status"`
 }

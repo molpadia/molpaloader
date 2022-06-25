@@ -37,7 +37,7 @@ func getVideo(w http.ResponseWriter, r *http.Request) error {
 	if video == nil {
 		return &appError{http.StatusNotFound, "video ID does not exist"}
 	}
-	return replyJSON(w, VideoResponse{video.Id, video.Description, video.Tags, video.Metadata}, http.StatusOK)
+	return replyJSON(w, VideoResponse{video.Id, video.Description, video.Tags, video.Metadata, video.Status}, http.StatusOK)
 }
 
 // Create a new video.
@@ -81,7 +81,7 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	if err = repo.Save(video); err != nil {
 		return fmt.Errorf("failed to save data to dynamodb: %v", err)
 	}
-	return replyJSON(w, VideoResponse{Id: video.Id}, http.StatusOK)
+	return replyJSON(w, VideoResponse{video.Id, video.Description, video.Tags, video.Metadata, video.Status}, http.StatusCreated)
 }
 
 // Upload the video to the remote storage.
@@ -139,25 +139,36 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return fmt.Errorf("failed to upload video to S3: %v", err)
 		}
+		video.SetStatus(entity.UploadedStatusCompleted)
+		if err = repo.Save(video); err != nil {
+			return fmt.Errorf("failed to save video to the persistence")
+		}
 	case "resumable":
+		if cr != nil {
+			return &appError{http.StatusBadRequest, "Content-Range must be required"}
+		}
 		part, err := uploader.UploadPart(id, video.Upload.Id, buf.Bytes(), size, cr.CurrentPart())
 		if err != nil {
 			return fmt.Errorf("failed to partial upload to S3, %v", err)
 		}
 		video.AddUploadPart(part)
+		// Assemble uploaded parts and complete the upload.
+		if len(video.Upload.Parts) >= int(cr.Parts()) {
+			video.SetStatus(entity.UploadedStatusCompleted)
+			if err = uploader.CompleteMultipart(id, video.Upload.Id, video.Upload.Parts); err != nil {
+				return fmt.Errorf("failed to complete multipart upload: %v", err)
+			}
+		}
 		if err = repo.Save(video); err != nil {
-			return fmt.Errorf("failed to save data to dynamodb: %v", err)
-		}
-		// Respond to the client if the upload was not completed.
-		if len(video.Upload.Parts) < int(cr.Parts()) {
-			w.WriteHeader(http.StatusPartialContent)
-			return nil
-		}
-		if err = uploader.CompleteMultipart(id, video.Upload.Id, video.Upload.Parts); err != nil {
-			return fmt.Errorf("failed to complete multipart upload: %v", err)
+			return fmt.Errorf("failed to save video to the persistence")
 		}
 	default:
 		return &appError{http.StatusBadRequest, "Invalid upload type"}
+	}
+	// Respond to the client if the upload was not completed.
+	if cr != nil && len(video.Upload.Parts) < int(cr.Parts()) {
+		w.WriteHeader(http.StatusPartialContent)
+		return nil
 	}
 	// Respond in success when the given file has been uploaded.
 	w.WriteHeader(http.StatusOK)
