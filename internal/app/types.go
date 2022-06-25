@@ -8,5 +8,9 @@ type VideoRequest struct {
 }
 
 type VideoResponse struct {
-	Id string `json:"id"`
+	Id          string            `json:"id"`
+	Description string            `json:"description"`
+	Tags        []string          `json:"tags"`
+	Metadata    map[string]string `json:"metadata"`
+	Status      string            `json:"status"`
 }

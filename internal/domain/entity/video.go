@@ -1,5 +1,13 @@
 package entity
 
+const (
+	UploadedStatusCompleted = "UPLOADED"
+	UploadedStatusDeleted   = "DELETED"
+	UploadedStatusFailed    = "FAILED"
+	UploadedStatusProcessed = "PROCESSED"
+	UploadedStatusRejected  = "REJECTED"
+)
+
 // The entity of stream video.
 type Video struct {
 	Id          string
@@ -9,6 +17,7 @@ type Video struct {
 	Tags        []string
 	Title       string
 	Size        int64
+	Status      string
 	Upload      *UploadProgress
 }
 
@@ -19,6 +28,7 @@ func NewVideo(id, title, description, contentType string, size int64, tags []str
 		Description: description,
 		ContentType: contentType,
 		Size:        size,
+		Status:      UploadedStatusProcessed,
 		Tags:        tags,
 		Metadata:    metadata,
 	}
@@ -29,6 +39,11 @@ func (v *Video) NewUpload(id string) { v.Upload = &UploadProgress{Id: id} }
 // Add a file part to video for multipart upload.
 func (v *Video) AddUploadPart(part *Part) {
 	v.Upload.Parts = append(v.Upload.Parts, part)
+}
+
+// Mark the upload status to the video.
+func (v *Video) SetStatus(status string) {
+	v.Status = status
 }
 
 // The uplaod progress is used for multipart upload.
