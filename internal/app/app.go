@@ -13,7 +13,7 @@ type appHandler func(http.ResponseWriter, *http.Request) error
 func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := fn(w, r); err != nil {
 		log.Printf("Error: %v", err)
-		if e, ok := err.(*AppError); ok {
+		if e, ok := err.(*appError); ok {
 			replyJSON(w, e, e.Code)
 		} else {
 			replyJSON(w, fmt.Sprintf("Internal server error: %v", err), http.StatusInternalServerError)

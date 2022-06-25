@@ -29,11 +29,11 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("cannot parse JSON from request body: %v", err)
 	}
 	if r.Header.Get("X-Upload-Content-Type") == "" {
-		return &AppError{http.StatusBadRequest, "X-Upload-Content-Type header must be required"}
+		return &appError{http.StatusBadRequest, "X-Upload-Content-Type header must be required"}
 	}
 	size, err := strconv.ParseInt(r.Header.Get("X-Upload-Content-Length"), 10, 64)
 	if err != nil {
-		return &AppError{http.StatusBadRequest, "X-Upload-Content-Length header must be required"}
+		return &appError{http.StatusBadRequest, "X-Upload-Content-Length header must be required"}
 	}
 	sess := session.Must(session.NewSession())
 	uploader := infrastructure.NewUploader(sess)
@@ -57,7 +57,7 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 		}
 		video.NewUpload(uploadId)
 	default:
-		return &AppError{http.StatusBadRequest, "Invalid upload type"}
+		return &appError{http.StatusBadRequest, "Invalid upload type"}
 	}
 	// Save the multipart file information to the persistence.
 	if err = repo.Save(video); err != nil {
@@ -70,18 +70,18 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 	id := mux.Vars(r)["id"]
 	if id == "" {
-		return &AppError{http.StatusBadRequest, "video ID must be required"}
+		return &appError{http.StatusBadRequest, "video ID must be required"}
 	}
 	// Get the partial size of video upload.
 	size, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
-		return &AppError{http.StatusBadRequest, fmt.Sprintf("cannot parse Content-Length header: %v", err)}
+		return &appError{http.StatusBadRequest, fmt.Sprintf("cannot parse Content-Length header: %v", err)}
 	}
 	if size < minUploadChunkSize || size > maxUploadChunkSize {
-		return &AppError{http.StatusBadRequest, fmt.Sprintf("size must between %d and %d bytes", minUploadChunkSize, maxUploadChunkSize)}
+		return &appError{http.StatusBadRequest, fmt.Sprintf("size must between %d and %d bytes", minUploadChunkSize, maxUploadChunkSize)}
 	}
 	if size%minUploadChunkSize > 0 {
-		return &AppError{http.StatusBadRequest, fmt.Sprintf("size must be the multiple of %d bytes", minUploadChunkSize)}
+		return &appError{http.StatusBadRequest, fmt.Sprintf("size must be the multiple of %d bytes", minUploadChunkSize)}
 	}
 	var cr *httprange.ContentRange
 	sess := session.Must(session.NewSession())
@@ -92,7 +92,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("failed to retrieve the video file from DynamoDB: %v", err)
 	}
 	if video == nil {
-		return &AppError{http.StatusNotFound, "video ID does not exist"}
+		return &appError{http.StatusNotFound, "video ID does not exist"}
 	}
 	// Parse the Content-Range header for resumable upload.
 	if r.Header.Get("Content-Range") != "" {
@@ -101,10 +101,10 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 			return fmt.Errorf("cannot parse Content-Range header: %v", err)
 		}
 		if cr.Length() != size {
-			return &AppError{http.StatusBadRequest, "invalid length of Content-Range header"}
+			return &appError{http.StatusBadRequest, "invalid length of Content-Range header"}
 		}
 		if cr.Size != video.Size {
-			return &AppError{http.StatusBadRequest, "invalid size of Content-Range header"}
+			return &appError{http.StatusBadRequest, "invalid size of Content-Range header"}
 		}
 	}
 	buf := new(bytes.Buffer)
@@ -139,7 +139,7 @@ func uploadVideo(w http.ResponseWriter, r *http.Request) error {
 			return fmt.Errorf("failed to complete multipart upload: %v", err)
 		}
 	default:
-		return &AppError{http.StatusBadRequest, "Invalid upload type"}
+		return &appError{http.StatusBadRequest, "Invalid upload type"}
 	}
 	// Respond in success when the given file has been uploaded.
 	w.WriteHeader(http.StatusOK)
