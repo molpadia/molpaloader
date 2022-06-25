@@ -22,6 +22,24 @@ const (
 	maxUploadChunkSize = 10 << 20
 )
 
+// Get a single video.
+func getVideo(w http.ResponseWriter, r *http.Request) error {
+	id := mux.Vars(r)["id"]
+	if id == "" {
+		return &appError{http.StatusBadRequest, "video ID must be required"}
+	}
+	sess := session.Must(session.NewSession())
+	repo := persistence.NewVideoRepository(sess)
+	video, err := repo.GetById(id)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve the video file")
+	}
+	if video == nil {
+		return &appError{http.StatusNotFound, "video ID does not exist"}
+	}
+	return replyJSON(w, VideoResponse{video.Id, video.Description, video.Tags, video.Metadata}, http.StatusOK)
+}
+
 // Create a new video.
 func createVideo(w http.ResponseWriter, r *http.Request) error {
 	var data VideoRequest
@@ -63,7 +81,7 @@ func createVideo(w http.ResponseWriter, r *http.Request) error {
 	if err = repo.Save(video); err != nil {
 		return fmt.Errorf("failed to save data to dynamodb: %v", err)
 	}
-	return replyJSON(w, VideoResponse{video.Id}, http.StatusOK)
+	return replyJSON(w, VideoResponse{Id: video.Id}, http.StatusOK)
 }
 
 // Upload the video to the remote storage.

@@ -23,6 +23,7 @@ func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Register API endpoints to the router.
 func SetupRoutes(r *mux.Router) {
+	r.Methods("GET").Path("/molpastream/v1/videos/{id}").Handler(appHandler(getVideo))
 	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(createVideo))
 	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(uploadVideo))
 }
