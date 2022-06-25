@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/gorilla/mux"
+	"github.com/molpadia/molpastream/internal/infrastructure/persistence"
 )
 
 type appHandler func(http.ResponseWriter, *http.Request) error
@@ -23,7 +25,9 @@ func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // Register API endpoints to the router.
 func SetupRoutes(r *mux.Router) {
-	r.Methods("GET").Path("/molpastream/v1/videos/{id}").Handler(appHandler(getVideo))
-	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(createVideo))
-	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(uploadVideo))
+	sess := session.Must(session.NewSession())
+	c := &controller{persistence.NewVideoRepository(sess), persistence.NewUploader(sess)}
+	r.Methods("GET").Path("/molpastream/v1/videos/{id}").Handler(appHandler(c.getVideo))
+	r.Methods("POST").Path("/molpastream/v1/videos").Handler(appHandler(c.createVideo))
+	r.Methods("PUT").Path("/upload/molpastream/v1/videos/{id}").Handler(appHandler(c.uploadVideo))
 }
