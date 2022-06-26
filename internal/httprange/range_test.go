@@ -81,7 +81,6 @@ func TestParseContentRange(t *testing.T) {
 		{"bytes 0-/999", &ContentRange{Start: 599, End: 600, Size: 0}, "cannot parse end of Content-Range header"},
 		{"bytes 0-63/128", &ContentRange{Start: 0, End: 63, Size: 128}, ""},
 	}
-
 	for _, tt := range tests {
 		cr, err := ParseContentRange(tt.s)
 
@@ -89,18 +88,14 @@ func TestParseContentRange(t *testing.T) {
 			if err.Error() != tt.err {
 				t.Errorf("ParseContentRange(%q) error = %s, want %s", tt.s, err, tt.err)
 			}
-
 			continue
 		}
-
 		if cr.Start != tt.cr.Start {
 			t.Errorf("ParseContentRange(%q).Start = %d, want %d", tt.s, cr.Start, tt.cr.Start)
 		}
-
 		if cr.End != tt.cr.End {
 			t.Errorf("ParseContentRange(%q).End = %d, want %d", tt.s, cr.End, tt.cr.End)
 		}
-
 		if cr.Size != tt.cr.Size {
 			t.Errorf("ParseContentRange(%q).Size = %d, want %d", tt.s, cr.Size, tt.cr.Size)
 		}
