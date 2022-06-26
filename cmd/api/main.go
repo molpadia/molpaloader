@@ -27,24 +27,19 @@ func env(key string, def string) string {
 
 func main() {
 	flag.Parse()
-
 	r := mux.NewRouter()
 	app.SetupRoutes(r)
-
 	srv := &http.Server{
 		Handler:      r,
 		Addr:         *addr,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}
-
 	log.Printf("the server started on port: %s\n", *addr)
-
 	if *cert != "" && *key != "" {
 		log.Fatal(srv.ListenAndServeTLS(*cert, *key))
 	} else {
 		log.Fatal(srv.ListenAndServe())
 	}
-
 	defer srv.Close()
 }
