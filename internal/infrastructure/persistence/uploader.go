@@ -11,7 +11,7 @@ import (
 	"github.com/molpadia/molpastream/internal/domain/entity"
 )
 
-var bucket = os.Getenv("AWS_S3_VOD_BUCKET")
+var bucket = os.Getenv("AWS_VOD_BUCKET")
 
 type Uploader struct {
 	s3Uploader *s3manager.Uploader
