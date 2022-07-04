@@ -51,7 +51,7 @@ func handler(ctx context.Context, event events.S3Event) error {
 		Endpoint: aws.String(os.Getenv("AWS_VOD_MEDIACONVERT_URL")),
 	})))
 	out, err := mc.CreateJob(&mediaconvert.CreateJobInput{
-		Role:     aws.String(os.Getenv("AWS_VOD_ROLE_ARN")),
+		Role:     aws.String(os.Getenv("AWS_VOD_MEDIACONVERT_ROLE_ARN")),
 		Settings: js,
 	})
 	if err != nil {

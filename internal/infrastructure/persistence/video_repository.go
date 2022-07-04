@@ -11,7 +11,7 @@ import (
 	"github.com/molpadia/molpastream/internal/domain/entity"
 )
 
-var tableName = os.Getenv("AWS_DB_VOD_NAME")
+var tableName = os.Getenv("AWS_VOD_DB_NAME")
 
 type VideoRepository struct {
 	db *dynamodb.DynamoDB
